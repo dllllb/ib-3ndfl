@@ -41,6 +41,8 @@ def _parse_tickerkind(strval: str):
         return TickerKind.Option
     if strval == 'Forex':
         return TickerKind.Forex
+    if strval == 'Bonds':
+        return TickerKind.Bond
     raise ValueError(strval)
 
 
@@ -67,6 +69,10 @@ class TickersStorage:
     def put(self, *, symbol: str, conid: str, description: str, kind: TickerKind, multiplier: int):
         ticker = Ticker(symbol, kind)
         if ticker not in self._tickers:
+            if conid in self._conid_to_ticker:
+                logging.warning(f'split ignored: {symbol} {conid}')
+                return
+
             assert conid not in self._conid_to_ticker
             assert description not in self._description_to_ticker
             assert ticker not in self._multipliers
@@ -74,6 +80,10 @@ class TickersStorage:
             self._conid_to_ticker[conid] = ticker
             self._description_to_ticker[description] = ticker
             self._multipliers[ticker] = multiplier
+            return
+
+        if not self._conid_to_ticker.get(conid):
+            logging.warning(f'split ignored: {symbol} {conid}')
             return
 
         assert self._conid_to_ticker[conid] == ticker
@@ -95,6 +105,8 @@ class TickersStorage:
         if dtt is not None:
             assert dtt.kind == kind
             return dtt
+        
+        
 
         raise KeyError(name)
 
@@ -195,9 +207,9 @@ class InteractiveBrokersReportParser:
                 )
 
         # 2. parse settle_date from trade confirmation
-        for tc_fname in trade_confirmation_csvs:
-            with open(tc_fname, newline='') as tc_fh:
-                self._parse_trade_confirmation_csv(csv.reader(tc_fh, delimiter=','))
+        # for tc_fname in trade_confirmation_csvs:
+        #     with open(tc_fname, newline='') as tc_fh:
+        #         self._parse_trade_confirmation_csv(csv.reader(tc_fh, delimiter=','))
 
         # 3. parse everything else from activity (trades, dividends, ...)
         for activity_fname in activity_csvs:
@@ -281,6 +293,10 @@ class InteractiveBrokersReportParser:
         if ticker_kind == TickerKind.Forex:
             logging.warning(f'Skipping FOREX trade (not supported yet), your final report may be incorrect! {f}')
             return
+        
+        if ticker_kind == TickerKind.Bond:
+            logging.warning(f'Skipping Bond trade (not supported yet), your final report may be incorrect! {f}')
+            return
 
         ticker = self._tickers.get_ticker(f['Symbol'], ticker_kind)
         quantity_multiplier = self._tickers.get_multiplier(ticker)
@@ -288,7 +304,7 @@ class InteractiveBrokersReportParser:
 
         dt = _parse_datetime(f['Date/Time'])
 
-        settle_date = self._settle_dates.get_date(ticker.symbol, dt)
+        settle_date = dt.date() # self._settle_dates.get_date(ticker.symbol, dt)
         assert settle_date is not None
 
         self._trades.append(
@@ -328,10 +344,16 @@ class InteractiveBrokersReportParser:
                 break
 
         if not found:
-            raise Exception(f'dividend not found for {ticker} on {date}')
+            logging.warning(f'dividend not found for {ticker} on {date}')
+            # raise Exception(f'dividend not found for {ticker} on {date}')
 
     def _parse_dividends(self, f: Dict[str, str]):
-        div_symbol, div_type = _parse_dividend_description(f['Description'])
+        try:
+            div_symbol, div_type = _parse_dividend_description(f['Description'])
+        except:
+            logging.warning(f"wrong dividend record: {f['Description']}")
+            return
+
         ticker = self._tickers.get_ticker(div_symbol, TickerKind.Stock)
         date = _parse_date(f['Date'])
         amount = Money(f['Amount'], Currency.parse(f['Currency']))
@@ -348,6 +370,7 @@ class InteractiveBrokersReportParser:
                         tax=v.tax,
                     )
                     return
+            return
 
         assert amount.amount > 0, f'unsupported dividend with non positive amount: {f}'
         self._dividends.append(

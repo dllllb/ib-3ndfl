@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+import glob
 from typing import Dict, Iterable, List, Type
 
 import pandas  # type: ignore
@@ -123,21 +124,25 @@ def csvs_in_dir(directory: str):
     return sorted(ret)
 
 
-def parse_reports(activity_reports_dir: str, confirmation_reports_dir: str) -> InteractiveBrokersReportParser:
+def find_csvs(pattern: str):
+    return sorted(glob.glob(pattern))
+
+
+def parse_reports(activity_reports_dir: str): #, confirmation_reports_dir: str) -> InteractiveBrokersReportParser:
     parser_object = InteractiveBrokersReportParser()
 
-    activity_reports = csvs_in_dir(activity_reports_dir)
-    confirmation_reports = csvs_in_dir(confirmation_reports_dir)
+    activity_reports = find_csvs(activity_reports_dir) # csvs_in_dir(activity_reports_dir)
+    # confirmation_reports = csvs_in_dir(confirmation_reports_dir)
 
     for apath in activity_reports:
         logging.info('Activity report %s', apath)
-    for cpath in confirmation_reports:
-        logging.info('Confirmation report %s', cpath)
+    # for cpath in confirmation_reports:
+    #     logging.info('Confirmation report %s', cpath)
 
     logging.info('start reports parse')
     parser_object.parse_csv(
         activity_csvs=activity_reports,
-        trade_confirmation_csvs=confirmation_reports,
+        trade_confirmation_csvs=[] # confirmation_reports,
     )
     logging.info(f'end reports parse {parser_object}')
 
@@ -152,8 +157,8 @@ def main() -> None:
     }
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--activity-reports-dir', type=str, required=True, help='directory with InteractiveBrokers .csv activity reports')
-    parser.add_argument('--confirmation-reports-dir', type=str, required=True, help='directory with InteractiveBrokers .csv confirmation reports')
+    parser.add_argument('--activity-reports-path', type=str, required=True, help='directory with InteractiveBrokers .csv activity reports')
+    # parser.add_argument('--confirmation-reports-dir', type=str, required=True, help='directory with InteractiveBrokers .csv confirmation reports')
     parser.add_argument('--cache-dir', type=str, default='.', help='directory for caching (CBR RUB exchange rates)')
     parser.add_argument('--years', type=lambda x: [int(v.strip()) for v in x.split(',')], default=[], help='comma separated years for final report, omit for all')
     parser.add_argument('--verbose', nargs='?', default=False, const=True, help='do not "prune" reversed dividends, show dividends tax percent, disable rounding & etc.')
@@ -168,11 +173,11 @@ def main() -> None:
     elif args.quiet:
         logging.basicConfig(level=logging.ERROR)
 
-    if os.path.abspath(args.activity_reports_dir) == os.path.abspath(args.confirmation_reports_dir):
-        logging.error('--activity-reports-dir and --confirmation-reports-dir MUST be different directories')
-        return
+    # if os.path.abspath(args.activity_reports_dir) == os.path.abspath(args.confirmation_reports_dir):
+    #     logging.error('--activity-reports-dir and --confirmation-reports-dir MUST be different directories')
+    #     return
 
-    parser_object = parse_reports(args.activity_reports_dir, args.confirmation_reports_dir)
+    parser_object = parse_reports(args.activity_reports_path) #, args.confirmation_reports_dir)
 
     trades = parser_object.trades
     dividends = parser_object.dividends

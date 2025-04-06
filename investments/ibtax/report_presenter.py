@@ -4,7 +4,7 @@ from typing import Iterable, List, Optional, Union
 
 import pandas  # type: ignore
 from tabulate import tabulate
-from weasyprint import CSS, HTML  # type: ignore
+# from weasyprint import CSS, HTML  # type: ignore
 
 from investments.money import Money
 from investments.trades_fifo import PortfolioElement
@@ -24,7 +24,7 @@ class DisplayMode(Enum):
 
 class ReportPresenter(ABC):
     def __init__(self, verbose: bool = False, dst_filepath: Optional[str] = None, date_format: str = '%d.%m.%Y'):
-        assert dst_filepath is None or dst_filepath.endswith('.pdf')
+        assert dst_filepath is None or dst_filepath.endswith('.html') # dst_filepath.endswith('.pdf')
 
         self._output: str = ''
         self._dst_filepath: Optional[str] = dst_filepath
@@ -67,7 +67,18 @@ class ReportPresenter(ABC):
                 page-break-before: always;
             }
             """
-            HTML(string=self._output).write_pdf(self._dst_filepath, stylesheets=[CSS(string=css_style)])
+            # HTML(string=self._output).write_pdf(self._dst_filepath, stylesheets=[CSS(string=css_style)])
+            with open(self._dst_filepath, 'w') as f:
+                f.write('<html>\n')
+                f.write('<head>\n')
+                f.write('<style>\n')
+                f.write(css_style)
+                f.write('</style>\n')
+                f.write('</head>\n')
+                f.write('<body>\n')
+                f.write(self._output)
+                f.write('</body>\n')
+                f.write('</html>\n')
 
     def _append_output(self, msg: str):
         self._output += msg
@@ -162,6 +173,11 @@ class NativeReportPresenter(ReportPresenter):
         self._append_header('DIVIDENDS')
         self._append_output(self._append_table(dividends_presenter))
 
+        # dividend_tax = (dividends_presenter['amount_rub'] - dividends_presenter['tax_paid_rub']).sum()
+        # dividend_tax_df = pandas.DataFrame({'remaining tax': [dividend_tax]})
+        # self._append_header('Dividends tax')
+        # self._append_output(self._append_table(dividend_tax_df))
+
     def _append_fees_report(self, fees: pandas.DataFrame, year: int):
         fees_by_year = fees[fees['tax_year'] == year].drop(columns=['tax_year'])
         if fees_by_year.empty:
@@ -175,6 +191,10 @@ class NativeReportPresenter(ReportPresenter):
         self._start_new_page()
         self._append_header('OTHER FEES')
         self._append_output(self._append_table(feed_presenter))
+
+        self._append_header('TOTAL FEES')
+        total_fee_df = pandas.DataFrame({'Total Fee': [feed_presenter['amount_rub'].sum()]})
+        self._append_output(self._append_table(total_fee_df))
 
     def _append_interests_report(self, interests: pandas.DataFrame, year: int):
         interests_by_year = interests[interests['tax_year'] == year].drop(columns=['tax_year'])
